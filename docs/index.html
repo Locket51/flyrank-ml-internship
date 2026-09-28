@@ -43,14 +43,14 @@
 
   <div class="abstract">
     <strong>Abstract.</strong>
-    This paper asks which content pages a reviewer with limited weekly capacity should open first.
-    Using the FlyRank internship warehouse on <code>month = '2026-03'</code>, I built a five-feature ranking under
-    a client-grouped holdout, then re-audited it under a strict time-aware split with no overlap between the
-    feature and label windows. The ranking model scored Precision@50 = 0.46 on a naive random split and 0.54 on
-    a client-grouped split, but collapsed to 0.06 under strict separation — near the positive-class base rate —
-    which shows that most of the earlier lift was within-month autocorrelation rather than predictive skill. As a
-    decision-support deliverable, I therefore ship a transparent reason-coded review queue instead of a model,
-    with a human-review process and a clearly stated no-automation list.
+    FlyRank's content reviewers cannot open every page in the inventory, so the operational question is
+    which pages to look at first. This paper studies that problem on the FlyRank internship warehouse using
+    <code>month = '2026-03'</code>: a five-feature ranking of content pages, evaluated against a transparent
+    Week-4 baseline rule. Under a client-grouped holdout the ranking scored Precision@50 = 0.54, but under a
+    strict time-aware split with no overlap between the feature and label windows it collapsed to 0.06 — near
+    the positive-class base rate — which shows most of the earlier lift was within-month autocorrelation, not
+    predictive skill. As a decision-support deliverable I therefore ship a transparent reason-coded review
+    queue, not a model, with a human-review process and a clearly stated no-automation list.
   </div>
 
   <div class="toc">
@@ -68,11 +68,19 @@
   </div>
 
   <h2 id="intro">1. Introduction</h2>
-  <p>A reviewer cannot inspect every page in a content inventory. That is the problem this paper addresses:
-  given more candidate pages than review hours, how should the queue be ordered, and what evidence supports that
-  ordering? The output is <em>decision-support</em>: a ranked list with reason codes that tells a human which
-  pages to open first. It is not a claim that editing a page causes a recovery — establishing that would require
-  an experiment this data cannot provide.</p>
+  <p>FlyRank's product surfaces content pages that may need attention. The real operational problem underneath
+  that product is a prioritisation problem: at portfolio scale, a human reviewer cannot open every page, so
+  someone has to decide which pages deserve review hours this week and which do not. That decision is the case
+  study this paper works on.</p>
+
+  <p>The work sits in the <em>Refresh / Content Opportunity Scoring</em> lane. The output is
+  <em>decision-support</em>: a ranked list with reason codes that tells a reviewer which pages to open first.
+  It is not a claim that editing a page causes a recovery — establishing that would require a controlled
+  experiment the available data cannot provide.</p>
+
+  <p>Two things were tested: whether a learned ranking beats a transparent hand-tuned rule on the same slice,
+  and whether that ranking survives a stricter split that removes any overlap between the feature window and
+  the label window. The first answer was yes; the second answer was no. The paper reports both.</p>
 
   <h2 id="data">2. Data</h2>
   <p>All work uses the FlyRank internship warehouse on Hugging Face
@@ -84,7 +92,7 @@
   <p>Only <strong>3,611,061</strong> of those rows (<strong>36.7%</strong>) have GSC data available and
   <strong>413,966</strong> (<strong>4.2%</strong>) have GA4 data. Because GA4 coverage is thin, GA4-derived
   features are excluded. The final June 2026 <code>_sample</code> table is deliberately not used anywhere in
-  development — it is the natural outcome window of any past→future label.</p>
+  development — it is the natural outcome window of any past-to-future label.</p>
 
   <h2 id="method">3. Methodology</h2>
   <p><strong>Unit of analysis.</strong> One row per content item, summarised over a window inside March 2026.</p>
@@ -118,7 +126,7 @@
   </table>
 
   <figure>
-    <img src="../work/figures/w07_reason_code_distribution.png" alt="Reason-code distribution in the ranked queue">
+    <img src="w07_reason_code_distribution.png" alt="Reason-code distribution in the ranked queue">
     <figcaption>Reason-code distribution in the review queue built on <code>month='2026-03'</code>.</figcaption>
   </figure>
 
@@ -147,8 +155,8 @@
   <table>
     <thead><tr><th>Reason code</th><th>What it looks like</th><th>Action</th><th>Owner</th></tr></thead>
     <tbody>
-      <tr><td><code>declining_visible_page</code></td><td>imp_first ≥ 500, second-half impressions fell ≥30%</td><td>refresh</td><td>Content editor</td></tr>
-      <tr><td><code>top10_low_ctr</code></td><td>avg position ≤ 10, CTR &lt; 0.5%</td><td>metadata_review</td><td>SEO specialist</td></tr>
+      <tr><td><code>declining_visible_page</code></td><td>imp_first &ge; 500, second-half impressions fell &ge; 30%</td><td>refresh</td><td>Content editor</td></tr>
+      <tr><td><code>top10_low_ctr</code></td><td>avg position &le; 10, CTR &lt; 0.5%</td><td>metadata_review</td><td>SEO specialist</td></tr>
       <tr><td><code>watch</code></td><td>visible but no specific pattern</td><td>monitor</td><td>Reviewer spot-check</td></tr>
       <tr><td><code>no_signal</code></td><td>low visibility, no specific pattern</td><td>drop</td><td>not reviewed</td></tr>
     </tbody>
@@ -182,6 +190,7 @@
     <li><code>w05_model.ipynb</code> — Logistic Regression / Random Forest / Gradient Boosting</li>
     <li><code>w06_validation_audit.ipynb</code> — three-split before/after, leakage audit, claim rewrite</li>
     <li><code>w07_action_playbook.ipynb</code> — the queue, reason codes, exports</li>
+    <li><code>capstone.ipynb</code> — paper-mirror, demo outline, and shareable cuts</li>
   </ul>
   <p>Metrics receipts live in <code>work/outputs/*.json</code>. The queue CSV is regenerated on every run of
   <code>w07</code>. Raw client, URL, and query fields do not exist in the release and are not used here.</p>
