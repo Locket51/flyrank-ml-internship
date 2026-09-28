@@ -1,1 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ranked Content Review: A Transparent Queue Built on the FlyRank Internship Dataset</title>
+<style>
+  :root { --fg:#1a1a1a; --muted:#5a5a5a; --accent:#6a4c93; --rule:#e5e5e5; --bg:#fafafa; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:64px 24px 96px; }
+  h1 { font-size:34px; line-height:1.2; margin:0 0 8px; font-weight:700; }
+  h2 { font-size:22px; margin:56px 0 12px; font-weight:600; border-bottom:1px solid var(--rule); padding-bottom:8px; }
+  h3 { font-size:17px; margin:32px 0 8px; font-weight:600; }
+  p, li { color:var(--fg); }
+  .subtitle { color:var(--muted); font-size:15px; margin:0 0 4px; }
+  .byline { color:var(--muted); font-size:14px; margin:24px 0 40px; }
+  .abstract { background:#fff; border-left:3px solid var(--accent); padding:20px 24px; margin:32px 0 48px;
+              border-radius:4px; color:var(--muted); font-size:15px; }
+  .abstract strong { color:var(--fg); }
+  code { background:#efece6; padding:1px 5px; border-radius:3px; font-size:14px;
+         font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  table { width:100%; border-collapse:collapse; margin:16px 0; font-size:15px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--rule); }
+  th { background:#fff; font-weight:600; }
+  figure { margin:24px 0; text-align:center; }
+  figure img { max-width:100%; border:1px solid var(--rule); border-radius:4px; }
+  figcaption { color:var(--muted); font-size:13px; margin-top:8px; }
+  a { color:var(--accent); }
+  .toc { background:#fff; border:1px solid var(--rule); border-radius:4px; padding:16px 24px; margin:32px 0; }
+  .toc ol { margin:0; padding-left:20px; }
+  .toc a { text-decoration:none; }
+  footer { margin-top:80px; padding-top:24px; border-top:1px solid var(--rule); color:var(--muted); font-size:14px; }
+</style>
+</head>
+<body>
+<main>
 
+  <h1>Ranked Content Review: A Transparent Queue Built on the FlyRank Internship Dataset</h1>
+  <p class="subtitle">Which pages should a reviewer open first when capacity is limited?</p>
+  <p class="byline">Locket51 · March 2026 slice · <a href="https://github.com/Locket51/flyrank-ml-internship">Repo</a></p>
+
+  <div class="abstract">
+    <strong>Abstract.</strong>
+    This paper asks which content pages a reviewer with limited weekly capacity should open first.
+    Using the FlyRank internship warehouse on <code>month = '2026-03'</code>, I built a five-feature ranking under
+    a client-grouped holdout, then re-audited it under a strict time-aware split with no overlap between the
+    feature and label windows. The ranking model scored Precision@50 = 0.46 on a naive random split and 0.54 on
+    a client-grouped split, but collapsed to 0.06 under strict separation — near the positive-class base rate —
+    which shows that most of the earlier lift was within-month autocorrelation rather than predictive skill. As a
+    decision-support deliverable, I therefore ship a transparent reason-coded review queue instead of a model,
+    with a human-review process and a clearly stated no-automation list.
+  </div>
+
+  <div class="toc">
+    <strong>Contents</strong>
+    <ol>
+      <li><a href="#intro">Introduction</a></li>
+      <li><a href="#data">Data</a></li>
+      <li><a href="#method">Methodology</a></li>
+      <li><a href="#results">Results</a></li>
+      <li><a href="#limits">Limitations &amp; honest framing</a></li>
+      <li><a href="#recs">Ranked recommendations</a></li>
+      <li><a href="#repro">Reproducibility</a></li>
+      <li><a href="#ack">Acknowledgments &amp; data credit</a></li>
+    </ol>
+  </div>
+
+  <h2 id="intro">1. Introduction</h2>
+  <p>A reviewer cannot inspect every page in a content inventory. That is the problem this paper addresses:
+  given more candidate pages than review hours, how should the queue be ordered, and what evidence supports that
+  ordering? The output is <em>decision-support</em>: a ranked list with reason codes that tells a human which
+  pages to open first. It is not a claim that editing a page causes a recovery — establishing that would require
+  an experiment this data cannot provide.</p>
+
+  <h2 id="data">2. Data</h2>
+  <p>All work uses the FlyRank internship warehouse on Hugging Face
+  (<code>FlyRank/internship-warehouse</code>, build <code>flyrank_pseudonymized_warehouse_release_v20260703</code>),
+  restricted to a single mid-panel month: <code>month = '2026-03'</code>. The primary table is
+  <code>fact_content_daily_performance</code>, filtered to <code>gsc_data_available IS TRUE</code>. This slice
+  contains <strong>9,841,378</strong> rows across <strong>55</strong> clients and <strong>331,437</strong>
+  content items, covering <code>2026-03-01</code> through <code>2026-03-31</code>.</p>
+  <p>Only <strong>3,611,061</strong> of those rows (<strong>36.7%</strong>) have GSC data available and
+  <strong>413,966</strong> (<strong>4.2%</strong>) have GA4 data. Because GA4 coverage is thin, GA4-derived
+  features are excluded. The final June 2026 <code>_sample</code> table is deliberately not used anywhere in
+  development — it is the natural outcome window of any past→future label.</p>
+
+  <h2 id="method">3. Methodology</h2>
+  <p><strong>Unit of analysis.</strong> One row per content item, summarised over a window inside March 2026.</p>
+  <p><strong>Features (5).</strong> <code>impressions_first_half</code>, <code>clicks_first_half</code>,
+  <code>avg_position_first_half</code>, <code>ctr_first_half</code>, <code>days_with_impressions_first_half</code>
+  — all built from days <code>2026-03-01</code> to <code>2026-03-15</code>.</p>
+  <p><strong>Proxy label.</strong> <code>is_declining</code> — did second-half impressions fall below 70% of
+  first-half impressions? This is a defined rule, not a future observed outcome. It is used as a Week-5
+  proxy so the modelling loop runs end to end; the Week-6 audit tests whether it holds up.</p>
+  <p><strong>Baseline.</strong> A transparent rule from Week 4:
+  <code>0.45·visibility + 0.30·position_opportunity + 0.25·decay_risk</code>, with hand-picked weights.</p>
+  <p><strong>Validation design.</strong> Three splits are compared on the same rows: (a) a naive random 80/20
+  split, (b) a client-grouped holdout (whole <code>client_hash_id</code> groups held out), and (c) a strict
+  time-aware split with a 7-day feature window (<code>03-01</code> to <code>03-07</code>) and a non-overlapping
+  23-day label window (<code>03-08</code> to <code>03-31</code>), with client grouping still enforced.</p>
+  <p><strong>Leakage checks.</strong> Six-question checklist run against the guide — features strictly before the
+  decision point, no overlap between feature and label windows, no rebuilt product flags, no derived field that
+  encodes the target, no related rows split across train/test, and testing on clients never seen in training.</p>
+
+  <h2 id="results">4. Results</h2>
+  <p>The same Random Forest is scored three ways on the same five features. The before/after shows how much of
+  the earlier lift was an artefact of the split.</p>
+
+  <table>
+    <thead><tr><th>Split</th><th>ROC AUC</th><th>Average precision</th><th>Precision@50</th></tr></thead>
+    <tbody>
+      <tr><td>BEFORE — naive random split</td><td>0.631</td><td>0.301</td><td>0.460</td></tr>
+      <tr><td>AFTER — client-grouped holdout</td><td>0.576</td><td>0.359</td><td>0.540</td></tr>
+      <tr><td>AFTER+ — time-aware + client-grouped</td><td>0.524</td><td>0.031</td><td>0.060</td></tr>
+    </tbody>
+  </table>
+
+  <figure>
+    <img src="../work/figures/w07_reason_code_distribution.png" alt="Reason-code distribution in the ranked queue">
+    <figcaption>Reason-code distribution in the review queue built on <code>month='2026-03'</code>.</figcaption>
+  </figure>
+
+  <p><strong>Reading.</strong> Client grouping alone did not hurt the model — the naive random split was not the
+  main leak. The strict time-aware split collapsed Precision@50 to <strong>0.06</strong> and ROC AUC to
+  <strong>0.524</strong>, near the base rate. That drop is the size of the within-month autocorrelation that the
+  Week-5 design was carrying. The honest conclusion is that the model did not rank well on this slice under
+  strict separation.</p>
+
+  <h2 id="limits">5. Limitations &amp; honest framing</h2>
+  <ul>
+    <li><strong>Single month, single slice.</strong> All numbers are on <code>month='2026-03'</code>, 55 clients.
+    They do not establish behaviour on the full warehouse or on other months.</li>
+    <li><strong>Proxy label.</strong> <code>is_declining</code> is a rule-computed within-month proxy, not a
+    future observed outcome. The Week-6 audit tests what that means.</li>
+    <li><strong>No causal claim.</strong> A page on the queue is a <em>candidate</em>. Nothing here shows that
+    editing a page causes recovery.</li>
+    <li><strong>Search-only features.</strong> GA4 signals excluded because only 4.2% of rows have GA4 data.</li>
+    <li><strong>Composite-metric caution.</strong> No FlyRank product score is used as a feature or a target.</li>
+  </ul>
+
+  <h2 id="recs">6. Ranked recommendations</h2>
+  <p>The shipped deliverable is a transparent reason-coded queue, not a model. Every page gets exactly one
+  reason code, which maps to one action and one human owner.</p>
+
+  <table>
+    <thead><tr><th>Reason code</th><th>What it looks like</th><th>Action</th><th>Owner</th></tr></thead>
+    <tbody>
+      <tr><td><code>declining_visible_page</code></td><td>imp_first ≥ 500, second-half impressions fell ≥30%</td><td>refresh</td><td>Content editor</td></tr>
+      <tr><td><code>top10_low_ctr</code></td><td>avg position ≤ 10, CTR &lt; 0.5%</td><td>metadata_review</td><td>SEO specialist</td></tr>
+      <tr><td><code>watch</code></td><td>visible but no specific pattern</td><td>monitor</td><td>Reviewer spot-check</td></tr>
+      <tr><td><code>no_signal</code></td><td>low visibility, no specific pattern</td><td>drop</td><td>not reviewed</td></tr>
+    </tbody>
+  </table>
+
+  <h3>What must not be automated</h3>
+  <ul>
+    <li>Auto-refreshing a page — the queue does not know the topic, brand voice, or internal links.</li>
+    <li>Auto-rewriting titles or metas — CTR alone is a weak signal.</li>
+    <li>Auto-pruning or merging — consolidation needs an editor who can see query overlap and business value.</li>
+    <li>Feeding the queue back into a model as if it were ground truth.</li>
+  </ul>
+
+  <h3>Monitoring and retrain triggers</h3>
+  <ul>
+    <li>Reason-code distribution drifts by more than 20% between months.</li>
+    <li>Precision@50 falls below the base rate on a new month under strict validation.</li>
+    <li>Client mix changes materially (re-fit the visibility normalisation).</li>
+    <li>Label definition changes (any future-window version requires re-validating every feature).</li>
+  </ul>
+
+  <h2 id="repro">7. Reproducibility</h2>
+  <p>Every result in this paper is regenerated by the notebooks in the
+  <a href="https://github.com/Locket51/flyrank-ml-internship">repo</a>, under
+  <code>work/notebooks/</code>:</p>
+  <ul>
+    <li><code>w01_research_question.ipynb</code> — framing and lane</li>
+    <li><code>w02_ml_task_framing.ipynb</code> — task type and unit of analysis</li>
+    <li><code>w03_data_contract.ipynb</code> — contract, verification queries, leakage trap</li>
+    <li><code>w04_baseline_score.ipynb</code> — signal checks and the baseline rule</li>
+    <li><code>w05_model.ipynb</code> — Logistic Regression / Random Forest / Gradient Boosting</li>
+    <li><code>w06_validation_audit.ipynb</code> — three-split before/after, leakage audit, claim rewrite</li>
+    <li><code>w07_action_playbook.ipynb</code> — the queue, reason codes, exports</li>
+  </ul>
+  <p>Metrics receipts live in <code>work/outputs/*.json</code>. The queue CSV is regenerated on every run of
+  <code>w07</code>. Raw client, URL, and query fields do not exist in the release and are not used here.</p>
+
+  <h2 id="ack">8. Acknowledgments &amp; data credit</h2>
+  <p>Built on the <a href="https://flyrank.ai">FlyRank ML Internship dataset</a>. Thanks to the FlyRank team for
+  building and publishing the pseudonymised warehouse release used throughout this work.</p>
+
+  <footer>
+    <p>Public-safe: no client names, domains, URLs, raw queries, or private fields appear anywhere in this page.
+    All claims use observed, measured, directional, or decision-support language.</p>
+  </footer>
+
+</main>
+</body>
+</html>
